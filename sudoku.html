@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sudoku</title>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="sudoku.css" />
+  </head>
+  <body>
+    <nav>
+      <div class="logo">Su<span>·</span>doku</div>
+      <div class="nav-actions">
+        <button class="icon-toggle sound-toggle" id="sound-toggle" type="button" aria-label="Toggle sound effects">🔊</button>
+        <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Toggle color theme">🌙</button>
+      </div>
+    </nav>
+
+    <div class="main-layout">
+      <div class="left-panel">
+        <div class="hero">
+          <h1>Play<br /><em>Sudoku</em></h1>
+          <p>Fill the 9×9 grid so every row, column, and box contains 1–9 exactly once.</p>
+
+          <div class="diff-row">
+            <button class="diff-btn" data-diff="baby">Baby</button>
+            <button class="diff-btn" data-diff="easy">Easy</button>
+            <button class="diff-btn active" data-diff="medium">Medium</button>
+            <button class="diff-btn" data-diff="hard">Hard</button>
+            <button class="diff-btn" data-diff="expert">Expert</button>
+          </div>
+          <div class="diff-label">Choose difficulty then start a new game</div>
+
+          <button class="btn-primary new-game-btn" id="new-game-btn">New Game</button>
+        </div>
+      </div>
+
+      <div class="right-panel">
+        <div class="game-wrap">
+          <div class="stats-bar">
+            <div class="stat">
+              <div class="stat-val" id="timer-display">00:00</div>
+              <div class="stat-key">Time</div>
+            </div>
+            <div class="sep"></div>
+            <div class="stat">
+              <div class="stat-val mistakes" id="mistakes-display">
+                <div class="mistake-dot"></div>
+                <div class="mistake-dot"></div>
+                <div class="mistake-dot"></div>
+              </div>
+              <div class="stat-key">Mistakes</div>
+            </div>
+            <div class="sep"></div>
+            <div class="stat">
+              <div class="stat-val" id="hints-left">3</div>
+              <div class="stat-key">Hints</div>
+            </div>
+          </div>
+
+          <div class="board-wrap">
+            <div class="board" id="board"></div>
+          </div>
+
+          <div class="controls">
+            <div class="numpad" id="numpad"></div>
+            <div class="action-row">
+              <button class="act-btn" id="btn-erase">⌫ Erase</button>
+              <button class="act-btn" id="btn-notes">✎ Notes</button>
+              <button class="act-btn" id="btn-hint">💡 Hint</button>
+              <button class="act-btn" id="btn-undo">↩ Undo</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="overlay" id="win-overlay">
+      <div class="overlay-box">
+        <div class="overlay-emoji">🎉</div>
+        <h2>Solved!</h2>
+        <p>Well played. Here's your time:</p>
+        <div class="big-time" id="final-time">--:--</div>
+        <div class="big-label" id="final-diff">Medium</div>
+        <button class="btn-primary" id="play-again-btn" type="button">Play Again</button>
+      </div>
+    </div>
+
+    <div class="overlay" id="lose-overlay">
+      <div class="overlay-box">
+        <div class="overlay-emoji">💀</div>
+        <h2>Game Over</h2>
+        <p>3 mistakes — better luck next time.</p>
+        <button class="btn-primary" id="try-again-btn" type="button">Try Again</button>
+      </div>
+    </div>
+
+    <script src="sudoku.js"></script>
+  </body>
+</html>
