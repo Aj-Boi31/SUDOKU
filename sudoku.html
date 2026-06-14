@@ -7,43 +7,155 @@
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="sudoku.css" />
   </head>
-  <body>
+  <body class="in-menu">
     <nav>
-      <div class="logo">Su<span>·</span>doku</div>
+      <div class="nav-brand">
+        <div class="logo">Su<span>·</span>doku</div>
+
+      </div>
       <div class="nav-actions">
-        <button class="icon-toggle sound-toggle" id="sound-toggle" type="button" aria-label="Toggle sound effects">🔊</button>
-        <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Toggle color theme">🌙</button>
+        <button class="icon-toggle" id="nav-sound-btn" type="button" title="Toggle sound" aria-label="Toggle sound">🔊</button>
+        <button class="icon-toggle" id="nav-theme-btn" type="button" title="Toggle theme" aria-label="Toggle theme">☀️</button>
+        <button class="nav-menu-btn" id="nav-menu-btn" type="button" style="display:none" aria-label="Back to menu">
+          <span class="nmb-arrow">←</span><span class="nmb-text">Menu</span>
+        </button>
       </div>
     </nav>
 
-    <div class="main-layout">
-      <div class="left-panel">
-        <div class="hero">
-          <h1>Play<br /><em>Sudoku</em></h1>
-          <p>Fill the 9×9 grid so every row, column, and box contains 1–9 exactly once.</p>
+    <!-- MENU SCREEN -->
+    <div id="menu-screen">
+      <div class="menu-bg deco-bg" aria-hidden="true">
+        <svg viewBox="0 0 1440 900" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
+          <!-- ── TOP-LEFT cluster ── -->
+          <g class="fl1">
+            <path class="s-fill-a" d="M70 110 C70 58 150 38 196 70 C246 104 228 182 168 196 C104 210 62 168 70 110 Z"/>
+          </g>
+          <g class="fl2">
+            <circle class="s-stroke-b" cx="262" cy="92" r="42"/>
+          </g>
+          <path class="s-stroke-c" d="M44 300 h64 M76 268 v64" stroke-linecap="round"/>
+          <g class="fl3">
+            <path class="s-stroke-d" d="M150 250 q22 -26 44 0 q22 26 44 0 q22 -26 44 0" fill="none" stroke-linecap="round"/>
+          </g>
+          <g class="dots s-fill-e">
+            <circle cx="300" cy="210" r="6"/><circle cx="326" cy="226" r="6"/><circle cx="352" cy="210" r="6"/>
+            <circle cx="300" cy="236" r="6"/><circle cx="326" cy="252" r="6"/><circle cx="352" cy="236" r="6"/>
+          </g>
 
-          <div class="diff-row">
+          <!-- ── TOP-RIGHT cluster ── -->
+          <g class="fl2">
+            <path class="s-stroke-a" d="M1150 150 L1230 150 L1190 80 Z" fill="none" stroke-linejoin="round"/>
+          </g>
+          <path class="s-stroke-c" d="M1300 140 a70 70 0 0 1 96 30" fill="none" stroke-linecap="round"/>
+          <g class="fl1">
+            <path class="s-stroke-d" d="M1080 80 q24 -30 48 0 q24 30 48 0 q24 -30 48 0" fill="none" stroke-linecap="round"/>
+          </g>
+          <g class="dots s-fill-b">
+            <circle cx="1290" cy="300" r="6"/><circle cx="1316" cy="316" r="6"/><circle cx="1342" cy="300" r="6"/>
+            <circle cx="1290" cy="326" r="6"/><circle cx="1316" cy="342" r="6"/><circle cx="1342" cy="326" r="6"/>
+          </g>
+          <g class="fl3">
+            <path class="s-fill-e" d="M1360 70 C1360 44 1402 36 1414 64 C1424 88 1402 112 1378 106 C1360 102 1352 88 1360 70 Z"/>
+          </g>
+
+          <!-- ── BOTTOM-LEFT cluster ── -->
+          <path class="s-stroke-a" d="M60 760 l40 -34 l40 34 l40 -34 l40 34" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+          <g class="fl2">
+            <circle class="s-stroke-c" cx="170" cy="830" r="50"/>
+          </g>
+          <path class="s-stroke-b" d="M300 700 h60 M330 670 v60" stroke-linecap="round"/>
+          <g class="dots s-fill-d">
+            <circle cx="70" cy="560" r="6"/><circle cx="96" cy="576" r="6"/><circle cx="122" cy="560" r="6"/>
+          </g>
+
+          <!-- ── BOTTOM-RIGHT cluster ── -->
+          <g class="fl1">
+            <path class="s-fill-d" d="M1300 760 C1300 706 1382 688 1410 730 C1432 764 1410 836 1356 842 C1308 848 1294 808 1300 760 Z"/>
+          </g>
+          <g class="fl3">
+            <path class="s-stroke-e" d="M1060 820 q26 -28 52 0 q26 28 52 0 q26 -28 52 0" fill="none" stroke-linecap="round"/>
+          </g>
+          <g class="fl2">
+            <path class="s-fill-a" d="M1190 660 L1260 660 L1225 596 Z"/>
+          </g>
+          <path class="s-stroke-c" d="M1380 560 h56 M1408 532 v56" stroke-linecap="round"/>
+
+          <!-- ── sparkle accents ── -->
+          <path class="s-stroke-b" d="M720 70 l0 28 M706 84 l28 0" stroke-linecap="round"/>
+          <circle class="s-fill-c" cx="700" cy="840" r="7"/>
+        </svg>
+      </div>
+      <div class="menu-left">
+        <h1 class="menu-title">
+          <span class="mt-part" style="--d:0">Su</span><span class="mt-part mt-dot" style="--d:1">·</span><span class="mt-part" style="--d:2">doku</span>
+        </h1>
+        <p class="menu-sub">Fill the 9×9 grid so every row, column, and box contains the digits 1–9 exactly once.</p>
+      </div>
+      <div class="menu-right">
+        <div class="menu-card" id="mc-solo" style="--ci:0">
+          <div class="mc-header">
+            <span class="mc-icon">🎮</span>
+            <div>
+              <div class="mc-title">Solo Play</div>
+              <div class="mc-sub">Pick your difficulty</div>
+            </div>
+          </div>
+          <div class="mc-diff-row">
             <button class="diff-btn" data-diff="baby">Baby</button>
             <button class="diff-btn" data-diff="easy">Easy</button>
             <button class="diff-btn active" data-diff="medium">Medium</button>
             <button class="diff-btn" data-diff="hard">Hard</button>
             <button class="diff-btn" data-diff="expert">Expert</button>
           </div>
-          <div class="diff-label">Choose difficulty then start a new game</div>
+          <div class="mc-addon-row">
+            <div class="mc-addon-label">
+              <span>🙈 Blind Mode</span>
+              <span class="mc-addon-desc">hides all error hints until the board is full</span>
+            </div>
+            <button class="mc-addon-toggle" id="menu-blind-toggle" type="button">OFF</button>
+          </div>
+          <button class="mc-play-btn" id="menu-play-btn" type="button">Play →</button>
+        </div>
 
-          <button class="btn-primary new-game-btn" id="new-game-btn">New Game</button>
+        <div class="menu-card" id="mc-multi" style="--ci:1">
+          <div class="mc-header">
+            <span class="mc-icon">⚔</span>
+            <div>
+              <div class="mc-title">Multiplayer</div>
+              <div class="mc-sub">Up to 4 players · same puzzle · first to finish wins</div>
+            </div>
+          </div>
+          <button class="mc-play-btn mc-play-btn--alt" id="menu-mp-btn" type="button">Challenge a Friend →</button>
+        </div>
+
+        <div class="menu-card mc-settings-card" id="mc-settings" style="--ci:2">
+          <button class="mc-header mc-settings-toggle" id="mc-settings-header" type="button" aria-expanded="false">
+            <span class="mc-icon">⚙</span>
+            <div>
+              <div class="mc-title">Settings</div>
+            </div>
+            <span class="mc-chevron">▾</span>
+          </button>
+          <div class="setting-toggles" id="setting-toggles">
+            <button class="setting-toggle" id="menu-sound-toggle" type="button">🔊 Sound</button>
+            <button class="setting-toggle" id="menu-theme-toggle" type="button">🌙 Dark Theme</button>
+          </div>
         </div>
       </div>
+    </div>
 
-      <div class="right-panel">
-        <div class="game-wrap">
+    <!-- GAME SCREEN -->
+    <div id="game-screen">
+      <div class="game-wrap">
+        <div class="mp-status" id="mp-status" style="display:none"></div>
+        <div class="game-main">
           <div class="stats-bar">
             <div class="stat">
               <div class="stat-val" id="timer-display">00:00</div>
               <div class="stat-key">Time</div>
             </div>
-            <div class="sep"></div>
-            <div class="stat">
+            <div class="sep" id="sep-mistakes"></div>
+            <div class="stat" id="stat-mistakes">
               <div class="stat-val mistakes" id="mistakes-display">
                 <div class="mistake-dot"></div>
                 <div class="mistake-dot"></div>
@@ -71,10 +183,117 @@
               <button class="act-btn" id="btn-undo">↩ Undo</button>
             </div>
           </div>
+        </div><!-- /.game-main -->
+      </div>
+    </div>
+
+    <!-- MP OVERLAY -->
+    <div class="overlay" id="mp-overlay">
+      <div class="overlay-box mp-box">
+        <!-- Setup: pick difficulty + blind mode -->
+        <div id="mp-screen-setup" class="mp-screen" style="display:none">
+          <div class="overlay-emoji">⚔</div>
+          <h2>Multiplayer</h2>
+          <div class="mp-setup-section">
+            <div class="mp-setup-label">Your Name</div>
+            <input class="mp-name-input" id="mp-player-name" type="text" maxlength="16" placeholder="Enter your name" autocomplete="off" spellcheck="false">
+          </div>
+          <div class="mp-setup-section">
+            <div class="mp-setup-label">Difficulty</div>
+            <div class="mp-setup-diff-row">
+              <button class="diff-btn" data-diff="baby">Baby</button>
+              <button class="diff-btn" data-diff="easy">Easy</button>
+              <button class="diff-btn active" data-diff="medium">Medium</button>
+              <button class="diff-btn" data-diff="hard">Hard</button>
+              <button class="diff-btn" data-diff="expert">Expert</button>
+            </div>
+          </div>
+          <div class="mp-setup-section">
+            <div class="mp-setup-label">Mode</div>
+            <div class="mp-mode-row">
+              <button class="mp-mode-btn active" data-mode="race" type="button">⚡ Race</button>
+              <button class="mp-mode-btn" data-mode="team" type="button">🤝 Team 2v2</button>
+            </div>
+          </div>
+          <div class="mp-setup-addon-row">
+            <div class="mc-addon-label">
+              <span>🙈 Blind Mode</span>
+              <span class="mc-addon-desc">hides errors until the board is full</span>
+            </div>
+            <button class="mc-addon-toggle" id="mp-setup-blind-toggle" type="button">OFF</button>
+          </div>
+          <button class="btn-primary" id="mp-setup-continue" type="button">Create Room →</button>
+          <button class="mp-cancel-btn" id="mp-setup-cancel" type="button">← Back</button>
+        </div>
+        <div id="mp-screen-choose" class="mp-screen">
+          <div class="overlay-emoji">⚔</div>
+          <h2>Multiplayer</h2>
+          <p class="mp-choose-sub">Up to 4 players · same puzzle</p>
+          <div class="mp-choose-grid">
+            <button class="mp-choose-card" id="mp-create-btn" type="button">
+              <div class="mp-choose-icon">🏠</div>
+              <div class="mp-choose-title">Create Room</div>
+              <div class="mp-choose-desc">You set the difficulty and invite friends with a code</div>
+            </button>
+            <button class="mp-choose-card" id="mp-show-join-btn" type="button">
+              <div class="mp-choose-icon">🔗</div>
+              <div class="mp-choose-title">Join Room</div>
+              <div class="mp-choose-desc">Enter a code shared by the host</div>
+            </button>
+          </div>
+          <button class="mp-cancel-btn" id="mp-close-btn" type="button">Cancel</button>
+        </div>
+        <div id="mp-screen-wait" class="mp-screen" style="display:none">
+          <div class="overlay-emoji">⏳</div>
+          <h2>Room Ready</h2>
+          <p>Share this code with up to 3 friends:</p>
+          <div class="room-code" id="room-code-display">------</div>
+          <div class="mp-player-list" id="mp-player-list">
+            <div class="mp-slot mp-slot-host">👑 You (Host)</div>
+            <div class="mp-slot mp-slot-empty">Waiting…</div>
+            <div class="mp-slot mp-slot-empty">Waiting…</div>
+            <div class="mp-slot mp-slot-empty">Waiting…</div>
+          </div>
+          <button class="btn-primary mp-start-btn" id="mp-start-btn" type="button" disabled>Start Game</button>
+          <button class="mp-cancel-btn" id="mp-cancel-btn" type="button">Cancel</button>
+        </div>
+        <div id="mp-screen-lobby" class="mp-screen" style="display:none">
+          <div class="overlay-emoji">⏳</div>
+          <h2>Joined!</h2>
+          <p id="mp-lobby-text">Waiting for host to start…</p>
+          <div class="mp-player-list" id="mp-lobby-player-list">
+            <div class="mp-slot mp-slot-empty">Waiting…</div>
+            <div class="mp-slot mp-slot-empty">Waiting…</div>
+            <div class="mp-slot mp-slot-empty">Waiting…</div>
+            <div class="mp-slot mp-slot-empty">Waiting…</div>
+          </div>
+          <button class="mp-cancel-btn" id="mp-lobby-cancel" type="button">Leave Room</button>
+        </div>
+        <div id="mp-screen-join" class="mp-screen" style="display:none">
+          <div class="overlay-emoji">🔗</div>
+          <h2>Join Room</h2>
+          <div class="mp-setup-section">
+            <div class="mp-setup-label">Your Name</div>
+            <input class="mp-name-input" id="mp-join-name" type="text" maxlength="16" placeholder="Enter your name" autocomplete="off" spellcheck="false">
+          </div>
+          <div class="mp-setup-section">
+            <div class="mp-setup-label">Room Code</div>
+            <input class="room-input" id="room-code-input" type="text" maxlength="6" placeholder="XXXXXX" autocomplete="off" spellcheck="false">
+          </div>
+          <div class="mp-error" id="mp-error"></div>
+          <button class="btn-primary" id="mp-join-submit" type="button">Join Room →</button>
+          <button class="mp-cancel-btn" id="mp-join-back" type="button">← Back</button>
+        </div>
+        <div id="mp-screen-connecting" class="mp-screen" style="display:none">
+          <div class="overlay-emoji">🔄</div>
+          <h2>Connecting…</h2>
+          <p>Establishing connection with the room.</p>
+          <button class="mp-cancel-btn" id="mp-connect-cancel" type="button">Cancel</button>
         </div>
       </div>
     </div>
 
+    <!-- WIN OVERLAY -->
     <div class="overlay" id="win-overlay">
       <div class="overlay-box">
         <div class="overlay-emoji">🎉</div>
@@ -83,18 +302,28 @@
         <div class="big-time" id="final-time">--:--</div>
         <div class="big-label" id="final-diff">Medium</div>
         <button class="btn-primary" id="play-again-btn" type="button">Play Again</button>
+        <button class="overlay-menu-btn" id="win-menu-btn" type="button">
+          <span class="omm-logo">Su<span class="omm-dot">·</span>doku</span>
+          <span class="omm-sub">back to menu</span>
+        </button>
       </div>
     </div>
 
+    <!-- LOSE OVERLAY -->
     <div class="overlay" id="lose-overlay">
       <div class="overlay-box">
         <div class="overlay-emoji">💀</div>
         <h2>Game Over</h2>
         <p>3 mistakes — better luck next time.</p>
         <button class="btn-primary" id="try-again-btn" type="button">Try Again</button>
+        <button class="overlay-menu-btn" id="lose-menu-btn" type="button">
+          <span class="omm-logo">Su<span class="omm-dot">·</span>doku</span>
+          <span class="omm-sub">back to menu</span>
+        </button>
       </div>
     </div>
 
+    <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
     <script src="sudoku.js"></script>
   </body>
 </html>
