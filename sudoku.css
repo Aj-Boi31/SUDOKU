@@ -245,21 +245,39 @@ body:not(.in-menu) .nav-menu-btn:hover{
   .nav-menu-btn{padding:7px 11px;}
   .nav-menu-btn .nmb-text{display:none;}
   .main-layout{padding:0 8px;margin-top:52px;height:calc(100vh - 52px);}
-  .stats-bar{gap:8px;margin-bottom:8px;}
+
+  /* controls */
+  .stats-bar{gap:12px;margin-bottom:0;}
   .stat-val{font-size:20px;}
   .board-wrap,.controls{max-width:100%;}
-  .board{width:100%;max-width:100%;}
-  .controls{margin-top:12px;gap:10px;}
-  .numpad{gap:8px;}
-  .num-btn{min-height:44px;font-size:16px;}
+  .controls{max-width:100%;margin-top:0;gap:10px;}
+  .numpad{gap:6px;}
+  .num-btn{min-height:48px;font-size:20px;}
   .action-row{gap:6px;flex-wrap:wrap;}
-  .act-btn{flex:1 1 calc(50% - 3px);min-height:44px;font-size:10px;padding:10px 6px;}
+  .act-btn{flex:1 1 calc(50% - 3px);min-height:50px;font-size:13px;padding:12px 6px;}
+
+  /* overlays */
+  .overlay{padding:12px;}
+  .overlay-box{padding:28px 20px;}
+  .overlay-emoji{font-size:40px;margin-bottom:10px;}
+  .overlay h2{font-size:24px;margin-bottom:6px;}
+  .overlay p{font-size:13px;margin-bottom:16px;}
+  .overlay .big-time{font-size:38px;}
+  .overlay .big-label{margin-bottom:14px;}
+  .btn-primary{padding:13px 24px;}
+  .mp-box{padding:20px 16px;}
+  .room-code{font-size:26px;letter-spacing:0.14em;padding:10px 14px;}
+  .mp-choose-card{padding:16px 10px 14px;}
+  .mp-choose-icon{font-size:22px;}
 }
 
 @media (max-width:360px) {
   .diff-row{grid-template-columns:repeat(2,minmax(0,1fr));}
-  .act-btn{flex-basis:100%;}
-  .overlay-box{padding:36px 24px;}
+  .act-btn{flex-basis:100%;font-size:12px;}
+  .overlay-box{padding:20px 14px;}
+  .mp-box{padding:16px 12px;}
+  .overlay h2{font-size:20px;}
+  .overlay .big-time{font-size:32px;}
 }
 
 /* DIFFICULTY SELECTOR */
@@ -716,20 +734,38 @@ body.blind-active #sep-mistakes { display:none; }
   flex-shrink:0;
 }
 
-/* Mobile: stack mp-status above board */
+/* Mobile: game-wrap scrolls inside the fixed game-screen so deco-bg stays visible */
 @media (max-width:640px){
-  .game-wrap{flex-direction:column;max-width:100%;padding:8px;gap:8px;}
-  .game-main{max-width:100%;}
+  #game-screen{
+    display:flex;
+    align-items:stretch;
+    justify-content:center;
+    overflow:hidden;
+  }
+  .game-wrap{
+    flex-direction:column;
+    height:100%;
+    overflow-y:auto;
+    overflow-x:hidden;
+    -webkit-overflow-scrolling:touch;
+    max-width:100%;
+    width:100%;
+    padding:16px 12px 40px;
+    gap:14px;
+    align-items:center;
+    justify-content:flex-start;
+  }
+  .game-main{
+    height:auto;
+    max-width:100%;
+    width:100%;
+    justify-content:flex-start;
+    gap:14px;
+  }
+  .board-wrap{flex:none;overflow:visible;width:100%;}
+  .board{width:100%;max-width:100%;}
   .mp-status{width:100%;align-self:auto;}
-  .board{width:min(100%,380px,calc(100vh - 280px));}
   #game-screen.mp-layout .game-wrap::after{display:none;}
-}
-/* VERY SHORT SCREENS — allow scroll as last resort */
-@media (max-height:500px){
-  html,body{overflow:auto;height:auto;}
-  .game-wrap{height:auto;}
-  .board-wrap{flex:none;}
-  .board{width:min(100%,340px);}
 }
 
 /* ─── MENU & GAME SCREENS ─── */
@@ -800,6 +836,13 @@ body:not(.in-menu) .menu-bg{display:none}
 /* game-board shapes — quieter so they don't fight the board */
 #game-screen .deco-bg{opacity:calc(var(--shape-opacity) * 0.5)}
 #game-screen > .game-wrap{position:relative;z-index:1}
+
+/* mobile: game-screen is non-scrolling so deco-bg (position:absolute) stays put */
+@media (max-width:640px){
+  #game-screen .deco-bg{
+    opacity:var(--shape-opacity);
+  }
+}
 
 /* overlay shapes — sit on the backdrop behind the centered box */
 .overlay .deco-bg{opacity:calc(var(--shape-opacity) * 0.85);z-index:1}
