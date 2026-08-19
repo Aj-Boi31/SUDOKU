@@ -18,6 +18,16 @@ This project is a responsive Sudoku experience that lets players choose a diffic
 - Sound effects and feedback
 - Celebration fireworks on win
 
-## Run locally
+## Play it Live
 
-Open [sudoku.html](sudoku.html) in a browser to play the game.
+🎮 [Play Sudoku now](https://aj-boi31.github.io/SUDOKU/)
+
+## Run Locally
+
+Clone the repo and open `sudoku.html` in a browser:
+
+```bash
+git clone https://github.com/Aj-Boi31/SUDOKU.git
+cd SUDOKU
+open sudoku.html
+```
