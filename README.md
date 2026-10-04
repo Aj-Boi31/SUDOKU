@@ -35,14 +35,9 @@ sudoku.html   page layout
 sudoku.css    styling, light / dark themes, mobile layout
 sudoku.js     game logic, puzzle generation, notes / hints / undo, multiplayer
 index.html    redirects to sudoku.html
-agent.py      a dev helper script (see below)
 ```
 
 It has a mobile layout, so it works on phones too.
-
-## About `agent.py`
-
-A small development helper: it takes a screenshot of your screen and sends it with a task to Claude, which can then read and edit `sudoku.html`, `sudoku.css` and `sudoku.js` directly. You don't need it to play, and you should be careful running it on a copy you care about. If you want to run it, it needs the `anthropic` and `pyautogui` packages and an `ANTHROPIC_API_KEY`.
 
 ## What's missing
 
