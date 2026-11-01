@@ -4,6 +4,10 @@ A Sudoku game that runs in your browser, with a multiplayer mode for up to 4 peo
 
 **[Play it live](https://aj-boi31.github.io/SUDOKU/)**
 
+![Playing an Easy puzzle: notes, a wrong move flagged, undo, a hint, dark theme, then solved](docs/demo.gif)
+
+The GIF is a real run of the game in Chrome, played by a script: it pencils in notes, makes a wrong move on purpose, undoes it, uses a hint, switches to dark theme, then types in the rest of the solution (read from the game itself) with real clicks and key presses. Rebuild it with `pip install Pillow playwright` and `python docs/demo/make_demo_gif.py`.
+
 ## What you'll see
 
 Pick a difficulty (Baby, Easy, Medium, Hard or Expert, from 50 down to 22 starting clues) and you get a puzzle with:
