@@ -1,19 +1,30 @@
-# Deploys the game to GitHub Pages. If the RELAY_CONFIG_JS secret exists, it also publishes
-# relay-config.js, which holds the relay (TURN) password. That file is created here at deploy time
-# so the password is never committed to the repo.
+# Deploys the game to GitHub Pages together with relay-config.js, which holds the relay (TURN)
+# password. That file is created here at deploy time, so the password is never committed.
 #
-# One-time setup:
-#   1. Repo Settings > Secrets and variables > Actions > New repository secret.
-#      Name: RELAY_CONFIG_JS    Value: the full contents of your local relay-config.js
-#   2. Repo Settings > Pages > Build and deployment > Source: GitHub Actions
-#   3. Merge this workflow into main. It runs on every push to main, or run it by hand from the Actions tab.
-# Without the secret the site still deploys, with direct connections only.
+# Preferred setup, short-lived passwords: the workflow asks Metered for a credential that expires
+# in 48 hours and publishes only that. A schedule redeploys every 12 hours, so the live page always
+# has at least 36 hours left on its credential and the permanent password never appears on it.
+#   Repo Settings > Secrets and variables > Actions > New repository secret:
+#     METERED_DOMAIN       your app's Metered domain (Metered dashboard > Developers), e.g. yourapp.metered.live
+#     METERED_SECRET_KEY   the Secret key from the same Developers page. It stays in GitHub and is
+#                          never put in the game or in the published site.
+#
+# Fallback setup, one fixed password (used only if the two secrets above are missing):
+#     RELAY_CONFIG_JS      the full contents of a relay-config.js file
+#
+# Also needed once: Repo Settings > Pages > Build and deployment > Source: GitHub Actions.
+# If neither setup is present the site still deploys, with direct connections only.
+#
+# GitHub pauses scheduled workflows in a public repo after 60 days without repo activity. If that
+# happens the relay stops working within 48 hours; re-enable the workflow on the Actions tab.
 
 name: Deploy to GitHub Pages
 
 on:
   push:
     branches: [main]
+  schedule:
+    - cron: "17 5,17 * * *"
   workflow_dispatch:
 
 permissions:
@@ -40,22 +51,40 @@ jobs:
           mkdir _site
           cp index.html sudoku.html sudoku.js sudoku.css _site/
 
-      - name: Add the relay config from the secret
+      - name: Add the relay config
         env:
+          METERED_DOMAIN: ${{ secrets.METERED_DOMAIN }}
+          METERED_SECRET_KEY: ${{ secrets.METERED_SECRET_KEY }}
           RELAY_CONFIG_JS: ${{ secrets.RELAY_CONFIG_JS }}
         run: |
-          if [ -z "$RELAY_CONFIG_JS" ]; then
-            echo "No RELAY_CONFIG_JS secret set: deploying without a relay."
-            exit 0
+          if [ -n "$METERED_DOMAIN" ] && [ -n "$METERED_SECRET_KEY" ]; then
+            reply=$(curl -sS -m 30 --fail-with-body -X POST \
+              "https://${METERED_DOMAIN}/api/v1/turn/credential?secretKey=${METERED_SECRET_KEY}" \
+              -H 'Content-Type: application/json' \
+              -d '{"expiryInSeconds": 172800, "label": "sudoku-deploy"}') || {
+              echo "Metered would not create a credential. Check the METERED_DOMAIN and METERED_SECRET_KEY secrets."
+              exit 1
+            }
+            RELAY_REPLY="$reply" python3 .github/scripts/relay_config.py _site/relay-config.js || exit 1
+            if ! node --check _site/relay-config.js > /dev/null 2>&1; then
+              echo "The generated relay-config.js is not valid JavaScript."
+              exit 1
+            fi
+            echo "Created a 48-hour relay credential."
+            # A new credential takes up to 2 minutes to reach every TURN server, so wait before publishing it
+            sleep 120
+          elif [ -n "$RELAY_CONFIG_JS" ]; then
+            printf '%s\n' "$RELAY_CONFIG_JS" > _site/relay-config.js
+            # Stop here if the pasted secret is not valid JavaScript. The output is hidden so the
+            # password cannot end up in the log.
+            if ! node --check _site/relay-config.js > /dev/null 2>&1; then
+              echo "The RELAY_CONFIG_JS secret is not valid JavaScript. Paste the whole relay-config.js file."
+              exit 1
+            fi
+            echo "Added the fixed relay config from the RELAY_CONFIG_JS secret."
+          else
+            echo "No relay secrets set: deploying without a relay."
           fi
-          printf '%s\n' "$RELAY_CONFIG_JS" > _site/relay-config.js
-          # Stop here if the pasted secret is not valid JavaScript. The output is hidden so the
-          # password cannot end up in the log.
-          if ! node --check _site/relay-config.js > /dev/null 2>&1; then
-            echo "The RELAY_CONFIG_JS secret is not valid JavaScript. Paste the whole relay-config.js file."
-            exit 1
-          fi
-          echo "Relay config added."
 
       - uses: actions/configure-pages@v5
 
