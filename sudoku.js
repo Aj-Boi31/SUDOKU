@@ -933,6 +933,49 @@ const MP_COLORS = ['#7c6af5', '#ff6b6b', '#ffd93d', '#6bcb77'];
 const CURSOR_COLORS = ['#f43f5e', '#22d3ee', '#f97316', '#a3e635'];
 const MP_MAX = 4;
 
+/* WebRTC servers. PeerJS's built-in free TURN relays were shut down in 2023, so players on strict
+   networks (campus Wi-Fi, mobile data) cannot reach each other without a relay of your own.
+   Set up ONE of these, copying the values from your provider's dashboard:
+   - relay-config.js (git-ignored, because it holds a password) next to this file, containing e.g.
+     window.MP_TURN_SERVERS_LOCAL = [{ urls: ['turn:HOST:3478', 'turns:HOST:443?transport=tcp'], username: '...', credential: '...' }];
+     The live site only has a relay if that file is created when the site is deployed.
+   - MP_TURN_URL: a web address that returns that list as JSON, for providers that hand out
+     credentials through an API (Metered: https://YOUR_APP.metered.live/api/v1/turn/credentials?apiKey=YOUR_KEY)
+   Open the page with ?relay=1 on both devices to test it: that allows only the relay, so it
+   connects only if the relay works. */
+const MP_STUN_SERVERS = [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun.cloudflare.com:3478' }];
+const MP_TURN_SERVERS = window.MP_TURN_SERVERS_LOCAL || [];   // set by relay-config.js, which is git-ignored because it holds a password
+const MP_TURN_URL = '';
+
+let mpRelayServers = null, mpRelayLoadedAt = 0;   // list fetched from MP_TURN_URL, kept for 10 minutes
+
+async function mpLoadRelay() {
+  if (MP_TURN_SERVERS.length || !MP_TURN_URL) return;
+  if (mpRelayServers && Date.now() - mpRelayLoadedAt < 10 * 60 * 1000) return;
+  const abort = new AbortController();
+  const timer = setTimeout(() => abort.abort(), 5000);
+  try {
+    const res = await fetch(MP_TURN_URL, { signal: abort.signal });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    const list = Array.isArray(data) ? data : data.iceServers;
+    if (!Array.isArray(list)) throw new Error('unexpected response');
+    mpRelayServers = list;
+    mpRelayLoadedAt = Date.now();
+    mpLog('relay: credentials loaded', `${list.length} servers`);
+  } catch (e) {
+    mpLog('relay: could not load credentials', e.message);   // carry on with direct connections only
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function mpPeerOptions() {
+  const relayOnly = new URLSearchParams(location.search).get('relay') === '1';
+  const turn = MP_TURN_SERVERS.length ? MP_TURN_SERVERS : (mpRelayServers || []);
+  return { config: { iceServers: [...MP_STUN_SERVERS, ...turn], iceTransportPolicy: relayOnly ? 'relay' : 'all' } };
+}
+
 let mpPeer = null;
 let mpIsHost = false;
 let mpMySlot = 0;
@@ -941,6 +984,10 @@ let mpConn = null;   // client only: connection to host
 let mpPlayers = [];  // [{slot, correct, done, rank, active}] × MP_MAX
 let mpFinishRank = 0;
 let mpTeamWinSent = false;
+let mpRoomCode = '';        // host: code of the room being hosted
+let mpHostToken = 0;        // host: bumped on create/destroy so delayed retries can tell they are stale
+let mpRejoinActive = false; // joiner: trying to get back into a lobby the host dropped out of
+let mpRejoinTimer = null;
 
 /* helpers */
 function mpRandCode() {
@@ -1158,6 +1205,66 @@ function mpToast(msg, duration = 3000) {
   t._timer = setTimeout(() => t.classList.remove('show'), duration);
 }
 
+/* diagnostics: log PeerJS events and turn error types into readable text.
+   The log is kept in mpDiagLog so it can be dumped from the console. */
+const mpDiagLog = [];
+function mpLog(event, detail) {
+  mpDiagLog.push({ t: new Date().toISOString().slice(11, 23), event, detail: detail ?? '' });
+  console.log('[mp]', event, detail ?? '');
+}
+
+const MP_ERROR_TEXT = {
+  'peer-unavailable': 'No room with that code is online. Check the code and that the host still has the room open.',
+  'network': 'Could not reach the PeerJS server. Check your internet connection.',
+  'server-error': 'The PeerJS server returned an error. Try again in a minute.',
+  'socket-error': 'Lost the connection to the PeerJS server.',
+  'socket-closed': 'Lost the connection to the PeerJS server.',
+  'webrtc': 'WebRTC failed. A firewall, VPN or school/work network may be blocking direct connections.',
+  'negotiation-failed': 'Found the room but could not open a direct connection. A firewall, VPN, school/work network or mobile data may be blocking it.',
+  'connection-closed': 'The connection closed before the room answered.',
+  'browser-incompatible': 'This browser does not support WebRTC.',
+  'ssl-unavailable': 'The PeerJS server needs HTTPS.',
+};
+
+/* log whether an open connection runs directly between the devices or through a relay */
+async function mpLogPath(connection, who) {
+  for (let attempt = 0; attempt < 8; attempt++) {   // a relayed route is not marked as chosen the instant the channel opens
+    try {
+      const stats = await connection.peerConnection.getStats();
+      let pair;
+      stats.forEach(r => { if (r.type === 'candidate-pair' && r.nominated && r.state === 'succeeded') pair = r; });
+      if (pair) {
+        const local = stats.get(pair.localCandidateId), remote = stats.get(pair.remoteCandidateId);
+        const relayed = local.candidateType === 'relay' || remote.candidateType === 'relay';
+        mpLog(`${who}: connection path`, `${relayed ? 'relayed' : 'direct'} (local ${local.candidateType}, remote ${remote.candidateType})`);
+        return;
+      }
+    } catch (e) { return; }
+    await new Promise(r => setTimeout(r, 400));
+  }
+}
+
+/* destroy() fires 'disconnected' too, so clear mpPeer first: handlers ignore any peer that is no longer current */
+function mpDropPeer() {
+  const old = mpPeer;
+  mpPeer = null;
+  if (old) { try { old.destroy(); } catch (e) {} }
+}
+
+/* host: remember the room for this tab, so a refresh while waiting in the lobby can bring the same code back */
+const MP_ROOM_KEY = 'sudoku-mp-room';
+function mpSaveRoom() {
+  try { sessionStorage.setItem(MP_ROOM_KEY, JSON.stringify({ code: mpRoomCode, name: mpMyName, diff: currentDiff, mode: mpMode, blind: blindMode })); } catch (e) {}
+}
+function mpClearRoom() {
+  try { sessionStorage.removeItem(MP_ROOM_KEY); } catch (e) {}
+}
+
+function mpErrorMessage(err) {
+  const type = (err && err.type) || 'unknown';
+  return `${MP_ERROR_TEXT[type] || 'Connection failed.'} (${type})`;
+}
+
 function mpShowSetup() {
   document.querySelectorAll('#mp-screen-setup .diff-btn').forEach(b => {
     b.classList.toggle('active', b.dataset.diff === currentDiff);
@@ -1186,7 +1293,11 @@ function mpDestroy() {
   mpActive = false;
   mpConns = [];
   mpConn = null;
-  if (mpPeer) { try { mpPeer.destroy(); } catch (e) {} mpPeer = null; }
+  mpHostToken++;
+  mpRejoinActive = false;
+  clearTimeout(mpRejoinTimer);
+  mpClearRoom();
+  mpDropPeer();
   const s = document.getElementById('mp-status');
   s.style.display = 'none';
   s.innerHTML = '';
@@ -1227,6 +1338,7 @@ function mpRestartLobby() {
   s.style.display = 'none';
   s.innerHTML = '';
   if (mpIsHost) {
+    mpSaveRoom();
     mpUpdateWaitingRoom();
     mpShowScreen('mp-screen-wait');
   } else {
@@ -1289,8 +1401,23 @@ function mpShowTeamWin(teamIdx, t) {
 }
 
 /* ---- HOST LOGIC ---- */
+/* host: slots in use, in order. They are not always contiguous: a player can leave the middle of the lobby. */
+function mpActiveSlots() {
+  return [0, ...mpConns.map(c => c.slot)].sort((a, b) => a - b);
+}
+
+function mpFreeSlot() {
+  for (let s = 1; s < MP_MAX; s++) if (!mpConns.some(c => c.slot === s)) return s;
+  return -1;
+}
+
+function mpActiveNames() {
+  return Object.fromEntries(mpActiveSlots().map(s => [s, mpPlayerNames[s]]));
+}
+
 function mpUpdateWaitingRoom() {
-  const count = mpConns.length + 1;
+  const active = mpActiveSlots();
+  const count = active.length;
   const startBtn = document.getElementById('mp-start-btn');
   if (startBtn) {
     startBtn.disabled = count < 2;
@@ -1301,11 +1428,11 @@ function mpUpdateWaitingRoom() {
   if (!list) return;
   const slots = list.querySelectorAll('.mp-slot');
   const mid = Math.ceil(count / 2);
-  const teamTag = i => mpMode === 'team' ? ` · ${i < mid ? '🔵 A' : '🔴 B'}` : '';
+  const teamTag = s => mpMode === 'team' ? ` · ${active.indexOf(s) < mid ? '🔵 A' : '🔴 B'}` : '';
   slots[0].textContent = `👑 ${mpPlayerNames[0] || 'You'} (Host)${teamTag(0)}`;
   slots[0].className = 'mp-slot mp-slot-host';
   for (let i = 1; i < MP_MAX; i++) {
-    if (i <= mpConns.length) {
+    if (active.includes(i)) {
       slots[i].textContent = (mpPlayerNames[i] || `Player ${i + 1}`) + teamTag(i);
       slots[i].className = 'mp-slot mp-slot-filled';
     } else {
@@ -1315,28 +1442,36 @@ function mpUpdateWaitingRoom() {
   }
 }
 
+function mpRejectConn(connection) {
+  try { connection.send({ type: 'FULL' }); } catch (e) {}
+  setTimeout(() => { try { connection.close(); } catch (e) {} }, 300);
+}
+
 function mpSetupHostClientConn(connection) {
   if (mpConns.length >= MP_MAX - 1 || mpActive) {
-    connection.on('open', () => {
-      try { connection.send({ type: 'FULL' }); } catch (e) {}
-      setTimeout(() => { try { connection.close(); } catch (e) {} }, 300);
-    });
+    connection.on('open', () => mpRejectConn(connection));
     return;
   }
-  const slot = mpConns.length + 1;
-  mpConns.push({ conn: connection, slot });
-  mpPlayers[slot].active = true;
-  const peerName = connection.metadata?.name || `Player ${slot + 1}`;
-  mpPlayerNames[slot] = peerName;
+  // A joiner only takes a slot once its data channel is open. Until then (or forever, if their
+  // network blocks the connection) it must not show in lobbies, count toward the cap or block rematches.
+  let slot = -1;
 
   connection.on('open', () => {
-    const count = mpConns.length + 1;
-    connection.send({ type: 'WELCOME', slot, count, names: { ...mpPlayerNames } });
-    mpBroadcast({ type: 'PLAYER_JOIN', count, slot, names: { ...mpPlayerNames } });
+    if (mpConns.length >= MP_MAX - 1 || mpActive) { mpRejectConn(connection); return; }   // filled up while connecting
+    slot = mpFreeSlot();
+    mpConns.push({ conn: connection, slot });
+    mpPlayers[slot].active = true;
+    mpPlayerNames[slot] = connection.metadata?.name || `Player ${slot + 1}`;
+    mpLog('host: player joined', `slot ${slot} ${mpPlayerNames[slot]}`);
+    mpLogPath(connection, 'host');
+    const slots = mpActiveSlots(), names = mpActiveNames();
+    connection.send({ type: 'WELCOME', slot, count: slots.length, slots, names });
+    mpBroadcast({ type: 'PLAYER_JOIN', count: slots.length, slot, slots, names });
     mpUpdateWaitingRoom();
   });
 
   connection.on('data', data => {
+    if (slot === -1) return;   // turned away as the room filled up; it is about to close
     const pName = mpPlayerNames[slot] || `Player ${slot + 1}`;
     if (data.type === 'PROGRESS') {
       mpPlayers[slot].correct = data.n;
@@ -1396,6 +1531,8 @@ function mpSetupHostClientConn(connection) {
   });
 
   connection.on('close', () => {
+    if (slot === -1) return;   // never opened, so never took a slot
+    mpLog('host: player connection closed', `slot ${slot}`);
     mpConns = mpConns.filter(c => c.slot !== slot);
     mpPlayers[slot].active = false;
     delete mpPeerSelections[slot];
@@ -1410,34 +1547,90 @@ function mpSetupHostClientConn(connection) {
         mpToast(`${pName} left the game`);
       }
     } else {
+      delete mpPlayerNames[slot];
+      const slots = mpActiveSlots();
+      mpBroadcast({ type: 'PLAYER_LEAVE', slot, slots, count: slots.length });   // keep the other lobbies in step
       mpUpdateWaitingRoom();
     }
   });
 }
 
-function mpCreate() {
+/* `resumeCode` brings back the room code a refreshed host had; `tries` counts attempts at getting it back */
+function mpCreate(resumeCode, tries = 0) {
   mpIsHost = true;
   mpInitState(0);
   mpPlayerNames[0] = mpMyName || 'Host';
-  const code = mpRandCode();
-  if (mpPeer) { try { mpPeer.destroy(); } catch (e) {} }
-  mpPeer = new Peer(code);
+  const code = resumeCode || mpRandCode();
+  mpRoomCode = code;
+  const token = ++mpHostToken;
+  mpDropPeer();
+  mpPeer = new Peer(code, mpPeerOptions());
+  const peer = mpPeer;
+  let opened = false, reconnectTries = 0, reconnectTimer = null;
+
+  // The link to the PeerJS server can drop. Players already connected stay connected, but nobody new
+  // can find the room until it is back, so keep trying to restore it.
+  const scheduleReconnect = () => {
+    if (mpPeer !== peer || !opened || reconnectTimer) return;
+    if (reconnectTries >= 10) {
+      mpToast("Could not reconnect to the PeerJS server. New players can't join this room.", 6000);
+      return;
+    }
+    if (reconnectTries === 0) mpToast('Lost the connection to the PeerJS server. Reconnecting…', 4000);
+    reconnectTimer = setTimeout(() => {
+      reconnectTimer = null;
+      if (mpPeer !== peer || !peer.disconnected) return;
+      reconnectTries++;
+      mpLog('host: reconnecting to PeerJS server', `attempt ${reconnectTries}`);
+      try { peer.reconnect(); } catch (e) { scheduleReconnect(); }
+    }, reconnectTries === 0 ? 500 : 3000);
+  };
 
   mpPeer.on('open', id => {
+    mpLog('host: room open', id);
+    opened = true;
+    if (reconnectTries > 0) { reconnectTries = 0; mpToast('Reconnected to the PeerJS server.'); }
+    if (mpActive) return;   // back online mid-game: nothing to redraw
     document.getElementById('room-code-display').textContent = id;
+    mpSaveRoom();
     mpUpdateWaitingRoom();
     mpShowScreen('mp-screen-wait');
   });
 
-  mpPeer.on('connection', conn => mpSetupHostClientConn(conn));
+  mpPeer.on('connection', conn => {
+    mpLog('host: incoming connection', conn.peer);
+    mpSetupHostClientConn(conn);
+  });
+  mpPeer.on('disconnected', () => {
+    if (mpPeer !== peer) return;   // we closed it ourselves
+    mpLog('host: lost PeerJS server');
+    scheduleReconnect();
+  });
   mpPeer.on('error', err => {
-    if (err.type === 'unavailable-id') mpCreate();
-    else mpShowScreen('mp-screen-choose');
+    if (mpPeer !== peer) return;   // an old peer we already replaced
+    mpLog('host: peer error', `${err.type}: ${err.message}`);
+    // once the room is up, the room itself is still fine: server-link errors are handled by the
+    // 'disconnected' handler, and anything else came from one joiner whose connection failed
+    if (opened) return;
+    if (err.type === 'unavailable-id') {
+      mpDropPeer();
+      if (resumeCode && tries < 15) {
+        // the old registration can linger for a few seconds after a refresh
+        setTimeout(() => { if (token === mpHostToken) mpCreate(resumeCode, tries + 1); }, 1000);
+      } else {
+        if (resumeCode) mpToast("Couldn't restore your old room code, so this is a new room.", 6000);
+        mpCreate();
+      }
+      return;
+    }
+    mpShowScreen('mp-screen-choose');
+    mpToast(mpErrorMessage(err), 6000);
   });
 }
 
 function mpHostStartGame() {
   if (mpConns.length === 0) return;
+  mpClearRoom();   // a refresh mid-game cannot bring the game back, so don't restore the lobby
   const activeSlots = [0, ...mpConns.map(c => c.slot)];
   const teams = mpMode === 'team' ? mpBuildTeams(activeSlots) : [];
   const { puzzle: p, solution: sol } = generatePuzzle(currentDiff);
@@ -1475,14 +1668,20 @@ function mpUpdateLobby(count) {
   }
 }
 
+/* client: take the host's list of who is in the lobby (older hosts only send a count) */
+function mpApplySlots(data) {
+  if (data.slots) mpPlayers.forEach((pl, i) => { pl.active = data.slots.includes(i); });
+  else if (data.count) for (let i = 0; i < data.count; i++) mpPlayers[i].active = true;
+  if (data.names) mpPlayerNames = { ...data.names };
+}
+
 function mpHandleHostMsg(data) {
   if (data.type === 'WELCOME') {
     mpMySlot = data.slot;
     mpPlayers[data.slot].active = true;
-    if (data.names) mpPlayerNames = { ...data.names };
+    mpApplySlots(data);
   } else if (data.type === 'PLAYER_JOIN') {
-    for (let i = 0; i < data.count; i++) mpPlayers[i].active = true;
-    if (data.names) mpPlayerNames = { ...data.names };
+    mpApplySlots(data);
     mpUpdateLobby(data.count);
   } else if (data.type === 'START') {
     mpDoStart(data.puzzle, data.solution, data.diff, data.mode, data.teams, data.names, data.blind ?? false);
@@ -1520,6 +1719,9 @@ function mpHandleHostMsg(data) {
       } else {
         mpToast(`${leaveName} left the game`);
       }
+    } else {
+      delete mpPlayerNames[data.slot];   // still in the lobby: just drop them from the list
+      mpUpdateLobby(mpPlayers.filter(p => p.active).length);
     }
   } else if (data.type === 'FULL') {
     document.getElementById('mp-error').textContent = 'Room is full or game has already started.';
@@ -1541,33 +1743,80 @@ function mpHandleHostMsg(data) {
   }
 }
 
-function mpJoin(code) {
+/* the host dropped out of the lobby: it may just be refreshing, so keep trying the same room for a while */
+function mpRejoin(code) {
+  mpRejoinActive = true;
+  const deadline = Date.now() + 25000;
+  mpToast('Host disconnected. Trying to reconnect…', 5000);
+  const attempt = () => {
+    if (!mpRejoinActive) return;
+    if (Date.now() > deadline) {
+      mpDestroy();
+      mpHideOverlay();
+      showMenu();
+      mpToast('📡 Host disconnected — create a new room to play again');
+      return;
+    }
+    mpJoin(code, () => { mpRejoinTimer = setTimeout(attempt, 2000); });
+  };
+  attempt();
+}
+
+/* `retry`, when given, is called instead of showing an error (used while trying to get back into a lobby) */
+function mpJoin(code, retry) {
   mpIsHost = false;
   mpInitState(-1);
+  mpConn = null;   // so the connection we are replacing is ignored when it closes
+  let joinFailed = false;   // a specific error is already on screen; don't overwrite it
+  let roomClosed = false;   // the host closed the room on purpose
+  const fail = text => {
+    if (joinFailed || mpPeer !== peer) return;   // already reported, or this attempt was replaced
+    joinFailed = true;
+    if (retry) { retry(); return; }
+    document.getElementById('mp-error').textContent = text;
+    mpShowScreen('mp-screen-join');
+  };
 
-  if (mpPeer) { try { mpPeer.destroy(); } catch (e) {} }
-  mpPeer = new Peer();
+  mpDropPeer();
+  const peer = new Peer(undefined, mpPeerOptions());
+  mpPeer = peer;
 
-  mpPeer.on('open', () => {
+  mpPeer.on('open', id => {
+    mpLog('join: reached PeerJS server', id);
     mpShowScreen('mp-screen-connecting');
     const connection = mpPeer.connect(code, { reliable: true, metadata: { name: mpMyName || 'Player' } });
     mpConn = connection;
+    mpLog('join: connecting to room', code);
+    connection.on('open', () => { mpLog('join: data channel open'); mpLogPath(connection, 'join'); });
+    connection.on('iceStateChanged', state => mpLog('join: ICE state', state));
 
     connection.on('data', data => {
+      if (data.type === 'FULL') joinFailed = true;   // keep that message: the host closes the connection right after
+      if (data.type === 'ROOM_CLOSED') roomClosed = true;
       mpHandleHostMsg(data);
       if (data.type === 'WELCOME') {
+        mpRejoinActive = false;
         mpUpdateLobby(data.count);
         mpShowScreen('mp-screen-lobby');
       }
     });
 
     connection.on('close', () => {
-      if (!mpActive) {
-        // disconnected in lobby before game started
-        mpDestroy();
-        mpHideOverlay();
-        showMenu();
-        mpToast('📡 Host disconnected — create a new room to play again');
+      if (mpConn !== connection) return;   // we cancelled or left; mpDestroy() already ran
+      mpLog('join: host connection closed', mpActive ? 'during game' : (mpMySlot === -1 ? 'before joining' : 'in lobby'));
+      if (!mpActive && mpMySlot === -1) {
+        // never got into the room: the connection setup failed, the host didn't leave
+        if (!joinFailed) fail(mpErrorMessage({ type: 'connection-closed' }));
+      } else if (!mpActive) {
+        // dropped out of the lobby before the game started
+        if (roomClosed) {
+          mpDestroy();
+          mpHideOverlay();
+          showMenu();
+          mpToast('📡 The host closed the room');
+        } else {
+          mpRejoin(code);   // the host may just be refreshing
+        }
       } else if (gameActive) {
         gameActive = false;
         clearInterval(timerInterval);
@@ -1583,22 +1832,26 @@ function mpJoin(code) {
       }
     });
 
-    connection.on('error', () => {
-      document.getElementById('mp-error').textContent = 'Could not connect. Check the code.';
-      mpShowScreen('mp-screen-join');
+    connection.on('error', err => {
+      mpLog('join: connection error', `${err.type}: ${err.message}`);
+      fail(mpErrorMessage(err));
     });
 
     setTimeout(() => {
-      if (mpMySlot === -1 && !mpActive) {
-        document.getElementById('mp-error').textContent = 'Connection timed out. Check the code.';
-        mpShowScreen('mp-screen-join');
+      if (mpConn === connection && mpMySlot === -1 && !mpActive && !joinFailed) {
+        const ice = connection.peerConnection && connection.peerConnection.iceConnectionState;
+        mpLog('join: timed out', `ICE ${ice || 'none'}`);
+        fail(ice
+          ? `Found the room but could not open a direct connection (ICE: ${ice}). A firewall, VPN or school/work network may be blocking it.`
+          : 'The room did not respond. Check the code and that the host is still waiting.');
       }
     }, 12000);
   });
 
-  mpPeer.on('error', () => {
-    document.getElementById('mp-error').textContent = 'Failed to connect. Try again.';
-    mpShowScreen('mp-screen-join');
+  mpPeer.on('disconnected', () => { if (mpPeer === peer) mpLog('join: lost PeerJS server'); });
+  mpPeer.on('error', err => {
+    mpLog('join: peer error', `${err.type}: ${err.message}`);
+    fail(mpErrorMessage(err));
   });
 }
 
@@ -1647,7 +1900,7 @@ function mpDoStart(p, sol, diff, mode = 'race', teams = [], names = {}, blind = 
 document.getElementById('mp-setup-continue').addEventListener('click', () => {
   const nameInput = document.getElementById('mp-player-name');
   mpMyName = nameInput ? (nameInput.value.trim() || 'Player') : 'Player';
-  mpCreate();
+  mpLoadRelay().then(() => mpCreate());
 });
 document.getElementById('mp-setup-cancel').addEventListener('click', () => mpShowScreen('mp-screen-choose'));
 document.getElementById('mp-setup-blind-toggle').addEventListener('click', toggleBlindMode);
@@ -1665,7 +1918,17 @@ document.getElementById('mp-show-join-btn').addEventListener('click', () => {
   mpShowScreen('mp-screen-join');
 });
 document.getElementById('mp-close-btn').addEventListener('click', mpHideOverlay);
-document.getElementById('mp-cancel-btn').addEventListener('click', () => { mpDestroy(); mpHideOverlay(); });
+document.getElementById('mp-cancel-btn').addEventListener('click', () => {
+  if (mpIsHost && mpConns.length) {
+    // tell the players the room is closed on purpose, so they don't wait for it to come back
+    mpBroadcast({ type: 'ROOM_CLOSED' });
+    const peer = mpPeer;
+    setTimeout(() => { if (mpPeer === peer) { mpDestroy(); mpHideOverlay(); } }, 200);
+    return;
+  }
+  mpDestroy();
+  mpHideOverlay();
+});
 document.getElementById('mp-lobby-cancel').addEventListener('click', () => { mpDestroy(); mpHideOverlay(); });
 document.getElementById('mp-start-btn').addEventListener('click', mpHostStartGame);
 document.getElementById('mp-connect-cancel').addEventListener('click', () => { mpDestroy(); mpHideOverlay(); });
@@ -1684,7 +1947,7 @@ document.getElementById('mp-join-submit').addEventListener('click', () => {
     return;
   }
   mpMyName = name;
-  mpJoin(code);
+  mpLoadRelay().then(() => mpJoin(code));
 });
 document.getElementById('room-code-input').addEventListener('input', e => {
   e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
@@ -1692,3 +1955,17 @@ document.getElementById('room-code-input').addEventListener('input', e => {
 document.getElementById('room-code-input').addEventListener('keydown', e => {
   if (e.key === 'Enter') document.getElementById('mp-join-submit').click();
 });
+
+/* a host who refreshed while waiting in the lobby gets the same room code back */
+(function mpResumeRoom() {
+  let saved = null;
+  try { saved = JSON.parse(sessionStorage.getItem(MP_ROOM_KEY) || 'null'); } catch (e) {}
+  if (!saved || !saved.code) return;
+  mpMyName = saved.name || 'Host';
+  currentDiff = saved.diff || currentDiff;
+  mpMode = saved.mode || mpMode;
+  blindMode = !!saved.blind;
+  applyBlindMode();
+  mpToast('Restoring your room…', 4000);
+  mpLoadRelay().then(() => mpCreate(saved.code));
+})();

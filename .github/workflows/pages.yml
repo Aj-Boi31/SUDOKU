@@ -1,0 +1,67 @@
+# Deploys the game to GitHub Pages. If the RELAY_CONFIG_JS secret exists, it also publishes
+# relay-config.js, which holds the relay (TURN) password. That file is created here at deploy time
+# so the password is never committed to the repo.
+#
+# One-time setup:
+#   1. Repo Settings > Secrets and variables > Actions > New repository secret.
+#      Name: RELAY_CONFIG_JS    Value: the full contents of your local relay-config.js
+#   2. Repo Settings > Pages > Build and deployment > Source: GitHub Actions
+#   3. Merge this workflow into main. It runs on every push to main, or run it by hand from the Actions tab.
+# Without the secret the site still deploys, with direct connections only.
+
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Let a running deployment finish rather than cancelling it halfway
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Collect the site files
+        run: |
+          mkdir _site
+          cp index.html sudoku.html sudoku.js sudoku.css _site/
+
+      - name: Add the relay config from the secret
+        env:
+          RELAY_CONFIG_JS: ${{ secrets.RELAY_CONFIG_JS }}
+        run: |
+          if [ -z "$RELAY_CONFIG_JS" ]; then
+            echo "No RELAY_CONFIG_JS secret set: deploying without a relay."
+            exit 0
+          fi
+          printf '%s\n' "$RELAY_CONFIG_JS" > _site/relay-config.js
+          # Stop here if the pasted secret is not valid JavaScript. The output is hidden so the
+          # password cannot end up in the log.
+          if ! node --check _site/relay-config.js > /dev/null 2>&1; then
+            echo "The RELAY_CONFIG_JS secret is not valid JavaScript. Paste the whole relay-config.js file."
+            exit 1
+          fi
+          echo "Relay config added."
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - id: deployment
+        uses: actions/deploy-pages@v5
